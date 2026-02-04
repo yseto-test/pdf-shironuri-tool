@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Manual Area Masker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <style>
+        .drop-zone { border: 2px dashed #cbd5e1; transition: all 0.3s ease; }
+        .drop-zone.dragging { border-color: #22c55e; background-color: #f0fdf4; }
+        #previewContainer { 
+            position: relative; 
+            display: inline-block; 
+            cursor: crosshair;
+            user-select: none;
+            touch-action: none;
+        }
+        #maskSelection {
+            position: absolute;
+            border: 2px solid #22c55e;
+            background-color: rgba(34, 197, 94, 0.15);
+            display: none;
+            cursor: move;
+        }
+        .handle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: #22c55e;
+            border: 1px solid white;
+            border-radius: 50%;
+        }
+        /* Handle Positions */
+        .nw { top: -5px; left: -5px; cursor: nw-resize; }
+        .n  { top: -5px; left: 50%; transform: translateX(-50%); cursor: n-resize; }
+        .ne { top: -5px; right: -5px; cursor: ne-resize; }
+        .e  { top: 50%; right: -5px; transform: translateY(-50%); cursor: e-resize; }
+        .se { bottom: -5px; right: -5px; cursor: se-resize; }
+        .s  { bottom: -5px; left: 50%; transform: translateX(-50%); cursor: s-resize; }
+        .sw { bottom: -5px; left: -5px; cursor: sw-resize; }
+        .w  { top: 50%; left: -5px; transform: translateY(-50%); cursor: w-resize; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen flex flex-col items-center py-12 px-4">
+    <div class="max-w-4xl w-full bg-white rounded-2xl shadow-xl p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-2xl font-bold text-slate-800">PDF 領域指定白塗りツール</h1>
+            <p class="text-slate-500 mt-2">ドラッグで範囲指定。枠を掴んで移動やリサイズが可能です。</p>
+        </header>
+
+        <!-- Drop Zone (Initial Screen) -->
+        <div id="dropZone" class="drop-zone rounded-xl p-10 flex flex-col items-center justify-center cursor-pointer mb-6">
+            <div id="dropZoneContent" class="text-center">
+                <svg class="w-12 h-12 text-slate-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                <p class="text-slate-600 font-medium text-lg">PDFファイルをドラッグ＆ドロップ</p>
+                <p class="text-slate-400 text-sm mt-1">または、ここをクリックしてファイルを選択</p>
+            </div>
+            <input type="file" id="fileInput" class="hidden" accept="application/pdf">
+        </div>
+
+        <!-- Preview Area (Editor Screen) -->
+        <div id="editorArea" class="hidden flex flex-col items-center border-t pt-6">
+            <!-- Page Selector -->
+            <div class="w-full flex flex-col items-center mb-4 gap-2">
+                <div class="flex items-center gap-4">
+                    <span class="text-sm text-slate-600 font-semibold">プレビューページ:</span>
+                    <input type="number" id="previewPageInput" value="1" min="1" class="w-16 p-1 border rounded text-center">
+                    <span class="text-sm text-slate-500">/ <span id="totalPagesText">1</span> ページ</span>
+                </div>
+                <input type="range" id="previewPageSlider" value="1" min="1" max="1" class="w-full max-w-md h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                <p class="text-[10px] text-slate-400">※プレビュー上でのホイール操作でページ切り替え</p>
+            </div>
+
+            <div id="previewContainer" class="bg-white border shadow-sm">
+                <canvas id="pdfCanvas"></canvas>
+                <div id="maskSelection">
+                    <div class="handle nw" data-handle="nw"></div>
+                    <div class="handle n" data-handle="n"></div>
+                    <div class="handle ne" data-handle="ne"></div>
+                    <div class="handle e" data-handle="e"></div>
+                    <div class="handle se" data-handle="se"></div>
+                    <div class="handle s" data-handle="s"></div>
+                    <div class="handle sw" data-handle="sw"></div>
+                    <div class="handle w" data-handle="w"></div>
+                </div>
+            </div>
+
+            <div class="mt-4 flex gap-4">
+                <button id="resetSelection" class="text-sm text-red-500 hover:text-red-700 font-medium">選択範囲を解除</button>
+                <button id="changeFile" class="text-sm text-slate-500 hover:text-slate-700 font-medium border-l pl-4">別のファイルを選択</button>
+            </div>
+            
+            <button id="processBtn" class="w-full mt-8 bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-6 rounded-xl transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2">
+                <span>選択範囲を白塗りにして保存</span>
+            </button>
+            <p class="text-xs text-slate-400 mt-3 text-center">※全ページに対して同じ座標が白塗りされます</p>
+        </div>
+
+        <div id="status" class="mt-4 text-center text-sm font-medium hidden"></div>
+    </div>
+
+    <script>
+        const { PDFDocument, rgb } = PDFLib;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const editorArea = document.getElementById('editorArea');
+        const pdfCanvas = document.getElementById('pdfCanvas');
+        const maskSelection = document.getElementById('maskSelection');
+        const previewContainer = document.getElementById('previewContainer');
+        const processBtn = document.getElementById('processBtn');
+        const resetBtn = document.getElementById('resetSelection');
+        const changeFileBtn = document.getElementById('changeFile');
+        const status = document.getElementById('status');
+        
+        const previewPageInput = document.getElementById('previewPageInput');
+        const previewPageSlider = document.getElementById('previewPageSlider');
+        const totalPagesText = document.getElementById('totalPagesText');
+
+        let selectedFile = { name: '', data: null };
+        let pdfData = null;
+        let pdfDocForPreview = null;
+        let currentPreviewPage = 1;
+
+        // Interaction State
+        let mode = 'idle';
+        let currentHandle = null;
+        let startX, startY;
+        let initialRect = null;
+        let selectionRect = null;
+
+        // Helper: Show Status
+        function showStatus(text, className) {
+            if (!status) return;
+            status.textContent = text;
+            status.className = `mt-4 text-center text-sm font-medium ${className}`;
+            status.classList.remove('hidden');
+        }
+
+        // Helper: Reset to Initial Screen
+        function resetToInitial() {
+            editorArea.classList.add('hidden');
+            dropZone.classList.remove('hidden');
+            status.classList.add('hidden');
+            fileInput.value = ''; // ファイル選択をクリア
+            selectedFile = { name: '', data: null };
+            pdfData = null;
+            pdfDocForPreview = null;
+            selectionRect = null;
+            maskSelection.style.display = 'none';
+        }
+
+        // File Selection Handlers
+        dropZone.onclick = () => fileInput.click();
+        
+        // 「別ファイルを選択」のクリックイベント
+        changeFileBtn.onclick = () => {
+            resetToInitial();
+        };
+
+        dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('dragging'); };
+        dropZone.ondragleave = () => { dropZone.classList.remove('dragging'); };
+        dropZone.ondrop = (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragging');
+            if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+        };
+        fileInput.onchange = (e) => { if (e.target.files.length > 0) handleFile(e.target.files[0]); };
+
+        async function handleFile(file) {
+            if (file.type !== 'application/pdf') {
+                showStatus('エラー: PDFファイルを選択してください', 'text-red-500');
+                return;
+            }
+            const arrayBuffer = await file.arrayBuffer();
+            handleFileLoaded(file.name, arrayBuffer);
+        }
+
+        async function handleFileLoaded(fileName, arrayBuffer) {
+            selectedFile.name = fileName;
+            pdfData = arrayBuffer;
+            const loadingTask = pdfjsLib.getDocument({ data: pdfData.slice(0) });
+            pdfDocForPreview = await loadingTask.promise;
+            
+            totalPagesText.textContent = pdfDocForPreview.numPages;
+            previewPageInput.max = pdfDocForPreview.numPages;
+            previewPageSlider.max = pdfDocForPreview.numPages;
+            currentPreviewPage = 1;
+            
+            updatePageUI();
+            renderPreview(currentPreviewPage);
+        }
+
+        async function renderPreview(pageNumber) {
+            showStatus('プレビューを生成中...', 'text-slate-600');
+            try {
+                const page = await pdfDocForPreview.getPage(pageNumber);
+                const viewport = page.getViewport({ scale: 1.0 });
+                const scale = Math.min(800 / viewport.width, 1.0);
+                const scaledViewport = page.getViewport({ scale });
+                
+                pdfCanvas.width = scaledViewport.width;
+                pdfCanvas.height = scaledViewport.height;
+                const renderContext = { 
+                    canvasContext: pdfCanvas.getContext('2d'), 
+                    viewport: scaledViewport 
+                };
+                await page.render(renderContext).promise;
+
+                editorArea.classList.remove('hidden');
+                dropZone.classList.add('hidden');
+                showStatus('範囲を指定・調整してください', 'text-green-600');
+                if (selectionRect) updateSelectionUI();
+            } catch (err) {
+                showStatus('プレビューの生成に失敗しました', 'text-red-500');
+                console.error(err);
+            }
+        }
+
+        // Wheel to Page Navigation
+        previewContainer.addEventListener('wheel', (e) => {
+            if (!pdfDocForPreview || mode !== 'idle') return;
+            e.preventDefault();
+            const delta = Math.sign(e.deltaY);
+            let nextPrevPage = currentPreviewPage + (delta > 0 ? 1 : -1);
+            if (nextPrevPage >= 1 && nextPrevPage <= pdfDocForPreview.numPages && nextPrevPage !== currentPreviewPage) {
+                currentPreviewPage = nextPrevPage;
+                updatePageUI();
+                renderPreview(currentPreviewPage);
+            }
+        }, { passive: false });
+
+        function updatePageUI() {
+            previewPageInput.value = currentPreviewPage;
+            previewPageSlider.value = currentPreviewPage;
+        }
+
+        // --- Interaction Logic ---
+
+        previewContainer.onmousedown = (e) => {
+            const rect = previewContainer.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            if (e.target.classList.contains('handle')) {
+                mode = 'resizing';
+                currentHandle = e.target.dataset.handle;
+                startX = e.clientX;
+                startY = e.clientY;
+                initialRect = { ...selectionRect };
+                return;
+            }
+
+            if (e.target === maskSelection) {
+                mode = 'moving';
+                startX = e.clientX;
+                startY = e.clientY;
+                initialRect = { ...selectionRect };
+                return;
+            }
+
+            mode = 'drawing';
+            startX = mouseX;
+            startY = mouseY;
+            maskSelection.style.display = 'block';
+            updateSelectionElement(startX, startY, 0, 0);
+        };
+
+        window.onmousemove = (e) => {
+            if (mode === 'idle') return;
+            const rect = previewContainer.getBoundingClientRect();
+
+            if (mode === 'drawing') {
+                const currentX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+                const currentY = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+                const x = Math.min(startX, currentX);
+                const y = Math.min(startY, currentY);
+                const w = Math.abs(currentX - startX);
+                const h = Math.abs(currentY - startY);
+                updateSelectionElement(x, y, w, h);
+            } 
+            else if (mode === 'moving') {
+                const dx = (e.clientX - startX) / rect.width;
+                const dy = (e.clientY - startY) / rect.height;
+                selectionRect.x = Math.max(0, Math.min(initialRect.x + dx, 1 - selectionRect.width));
+                selectionRect.y = Math.max(0, Math.min(initialRect.y + dy, 1 - selectionRect.height));
+                updateSelectionUI();
+            } 
+            else if (mode === 'resizing') {
+                const dx = (e.clientX - startX) / rect.width;
+                const dy = (e.clientY - startY) / rect.height;
+                let { x, y, width, height } = initialRect;
+
+                if (currentHandle.includes('n')) { y += dy; height -= dy; }
+                if (currentHandle.includes('s')) { height += dy; }
+                if (currentHandle.includes('w')) { x += dx; width -= dx; }
+                if (currentHandle.includes('e')) { width += dx; }
+
+                if (width > 0.01 && height > 0.01) {
+                    selectionRect = { 
+                        x: Math.max(0, x), 
+                        y: Math.max(0, y), 
+                        width: Math.min(width, 1 - x), 
+                        height: Math.min(height, 1 - y) 
+                    };
+                    updateSelectionUI();
+                }
+            }
+        };
+
+        window.onmouseup = () => {
+            if (mode === 'drawing') {
+                const rect = previewContainer.getBoundingClientRect();
+                const left = parseFloat(maskSelection.style.left);
+                const top = parseFloat(maskSelection.style.top);
+                const width = parseFloat(maskSelection.style.width);
+                const height = parseFloat(maskSelection.style.height);
+
+                if (width < 5 || height < 5) {
+                    maskSelection.style.display = 'none';
+                    selectionRect = null;
+                } else {
+                    selectionRect = {
+                        x: left / rect.width,
+                        y: top / rect.height,
+                        width: width / rect.width,
+                        height: height / rect.height
+                    };
+                }
+            }
+            mode = 'idle';
+            currentHandle = null;
+        };
+
+        function updateSelectionElement(x, y, w, h) {
+            maskSelection.style.left = `${x}px`;
+            maskSelection.style.top = `${y}px`;
+            maskSelection.style.width = `${w}px`;
+            maskSelection.style.height = `${h}px`;
+        }
+
+        function updateSelectionUI() {
+            if (!selectionRect) return;
+            const cw = pdfCanvas.width;
+            const ch = pdfCanvas.height;
+            updateSelectionElement(
+                selectionRect.x * cw, 
+                selectionRect.y * ch, 
+                selectionRect.width * cw, 
+                selectionRect.height * ch
+            );
+        }
+
+        resetBtn.onclick = () => {
+            selectionRect = null;
+            maskSelection.style.display = 'none';
+        };
+
+        // --- Processing ---
+
+        processBtn.onclick = async () => {
+            if (!selectionRect) {
+                showStatus('エラー: 白塗りする範囲を選択してください', 'text-red-500');
+                return;
+            }
+
+            try {
+                processBtn.disabled = true;
+                processBtn.innerHTML = '処理中...';
+                showStatus('全ページを白塗り処理しています...', 'text-slate-600');
+
+                const pdfDoc = await PDFDocument.load(pdfData.slice(0));
+                const pages = pdfDoc.getPages();
+
+                pages.forEach((page) => {
+                    const { width, height } = page.getSize();
+                    const rectWidth = width * selectionRect.width;
+                    const rectHeight = height * selectionRect.height;
+                    const rectX = width * selectionRect.x;
+                    const rectY = height * (1 - selectionRect.y - selectionRect.height);
+
+                    page.drawRectangle({
+                        x: rectX,
+                        y: rectY,
+                        width: rectWidth,
+                        height: rectHeight,
+                        color: rgb(1, 1, 1),
+                    });
+                });
+
+                const pdfBytes = await pdfDoc.save();
+                
+                let originalName = selectedFile.name;
+                let fileNameToSave;
+                if (originalName.toLowerCase().endsWith('.pdf')) {
+                    const baseName = originalName.slice(0, -4);
+                    fileNameToSave = `${baseName}（アップロード用）.pdf`;
+                } else {
+                    fileNameToSave = `${originalName}（アップロード用）.pdf`;
+                }
+                
+                download(pdfBytes, fileNameToSave);
+                showStatus('完了しました！', 'text-green-600');
+            } catch (err) {
+                console.error(err);
+                showStatus('エラー: ' + err.message, 'text-red-500');
+            } finally {
+                processBtn.disabled = false;
+                processBtn.innerHTML = '<span>選択範囲を白塗りにして保存</span>';
+            }
+        };
+
+        function download(bytes, filename) {
+            const blob = new Blob([bytes], { type: 'application/pdf' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(link.href);
+        }
+
+        previewPageInput.onchange = () => {
+            let val = parseInt(previewPageInput.value);
+            if (isNaN(val) || val < 1) val = 1;
+            if (pdfDocForPreview && val > pdfDocForPreview.numPages) val = pdfDocForPreview.numPages;
+            currentPreviewPage = val;
+            updatePageUI();
+            renderPreview(currentPreviewPage);
+        };
+        previewPageSlider.oninput = () => {
+            currentPreviewPage = parseInt(previewPageSlider.value);
+            previewPageInput.value = currentPreviewPage;
+        };
+        previewPageSlider.onchange = () => renderPreview(currentPreviewPage);
+    </script>
+</body>
+</html>
