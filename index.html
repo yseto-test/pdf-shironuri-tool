@@ -3,11 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Manual Area Masker (Local Execution)</title>
-    <!-- 
-      Libraries are loaded via CDN, but ALL processing happens locally in your browser.
-      No PDF data is ever sent to a server.
-    -->
+    <title>PDF Batch Area Masker (Local Execution)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
@@ -38,7 +34,6 @@
             border: 2px solid white;
             border-radius: 2px;
         }
-        /* Handle Positions */
         .nw { top: -6px; left: -6px; cursor: nw-resize; }
         .n  { top: -6px; left: 50%; transform: translateX(-50%); cursor: n-resize; }
         .ne { top: -6px; right: -6px; cursor: ne-resize; }
@@ -47,58 +42,60 @@
         .s  { bottom: -6px; left: 50%; transform: translateX(-50%); cursor: s-resize; }
         .sw { bottom: -6px; left: -6px; cursor: sw-resize; }
         .w  { top: 50%; left: -6px; transform: translateY(-50%); cursor: w-resize; }
+        
+        .file-item { transition: all 0.2s ease; }
+        .file-item.active { background-color: #dbeafe; border-color: #2563eb; color: #1e40af; }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen flex flex-col items-center py-10 px-4 font-sans">
     <div class="max-w-4xl w-full bg-white rounded-2xl shadow-xl overflow-hidden">
-        <!-- Header with Privacy Notice -->
         <div class="bg-slate-800 p-6 text-white">
             <h1 class="text-xl font-bold flex items-center gap-2">
-                <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
-                PDF 領域指定白塗りツール (ローカル処理版)
+                <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                PDF 一括領域指定白塗りツール
             </h1>
             <p class="text-slate-400 text-sm mt-1">
-                インターネット接続はライブラリ読込のみに使用されます。PDFデータはサーバーへ一切送信されません。
+                複数ファイル対応。ファイル名をクリックしてプレビューを切り替えられます。
             </p>
         </div>
 
         <div class="p-8">
-            <!-- Drop Zone (Initial Screen) -->
+            <!-- Drop Zone -->
             <div id="dropZone" class="drop-zone rounded-xl p-16 flex flex-col items-center justify-center cursor-pointer mb-6 transition-colors">
                 <div class="text-center">
                     <div class="bg-blue-50 p-4 rounded-full inline-block mb-4">
                         <svg class="w-10 h-10 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
                     </div>
-                    <p class="text-slate-700 font-semibold text-xl">PDFをここにドラッグ＆ドロップ</p>
-                    <p class="text-slate-400 text-sm mt-2">またはクリックしてファイルを選択</p>
+                    <p class="text-slate-700 font-semibold text-xl">複数のPDFをここにドラッグ＆ドロップ</p>
+                    <p class="text-slate-400 text-sm mt-2">新しいファイルをドロップすると前のリストはクリアされます</p>
                 </div>
-                <input type="file" id="fileInput" class="hidden" accept="application/pdf">
+                <input type="file" id="fileInput" class="hidden" accept="application/pdf" multiple>
             </div>
 
             <!-- Editor Area -->
             <div id="editorArea" class="hidden flex flex-col items-center animate-in fade-in duration-500">
-                <!-- Navigation -->
-                <div class="w-full flex items-center justify-between mb-6 bg-slate-50 p-3 rounded-lg border border-slate-200">
-                    <div class="flex items-center gap-3">
-                        <button id="prevPageBtn" class="p-2 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-600">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-                        </button>
-                        <div class="flex items-center gap-2">
-                            <input type="number" id="previewPageInput" value="1" min="1" class="w-14 px-2 py-1 border border-slate-300 rounded text-center font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none">
-                            <span class="text-slate-500 text-sm font-medium">/ <span id="totalPagesText">1</span> ページ</span>
-                        </div>
-                        <button id="nextPageBtn" class="p-2 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-600">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                        </button>
+                <!-- File List / Queue -->
+                <div id="fileQueueDiv" class="w-full mb-6 bg-slate-50 border border-slate-200 rounded-lg p-4">
+                    <h3 class="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"></path></svg>
+                        処理対象ファイル (<span id="fileCountDisplay">0</span>) - クリックでプレビュー切替
+                    </h3>
+                    <div id="fileListNames" class="text-xs text-slate-500 grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+                        <!-- File names injected here -->
                     </div>
-                    
-                    <div class="flex-1 px-8">
-                        <input type="range" id="previewPageSlider" value="1" min="1" max="1" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
-                    </div>
+                </div>
 
-                    <div class="text-xs text-slate-400 font-medium">
-                        ホイールでページ切替
+                <!-- Navigation (Preview control) -->
+                <div class="w-full flex items-center justify-between mb-4 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <div class="flex items-center gap-3">
+                        <button id="prevPageBtn" class="p-2 hover:bg-white rounded-md text-slate-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg></button>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="previewPageInput" value="1" min="1" class="w-12 text-center border rounded">
+                            <span class="text-slate-500 text-xs">/ <span id="totalPagesText">1</span> ページ</span>
+                        </div>
+                        <button id="nextPageBtn" class="p-2 hover:bg-white rounded-md text-slate-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg></button>
                     </div>
+                    <span class="text-[10px] text-slate-400" id="currentPreviewFileInfo">プレビュー中: -</span>
                 </div>
 
                 <!-- Canvas Wrapper -->
@@ -119,20 +116,14 @@
                 <!-- Actions -->
                 <div class="mt-6 flex items-center justify-between w-full">
                     <div class="flex gap-4">
-                        <button id="resetSelection" class="flex items-center gap-1 text-sm text-red-500 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors font-medium">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                            範囲をクリア
-                        </button>
-                        <button id="changeFile" class="text-sm text-slate-500 hover:bg-slate-100 px-3 py-2 rounded-lg transition-colors font-medium">
-                            別のファイルを選択
-                        </button>
+                        <button id="resetSelection" class="text-sm text-red-500 font-medium px-3 py-2">範囲クリア</button>
+                        <button id="changeFile" class="text-sm text-slate-500 font-medium px-3 py-2">キャンセル・戻る</button>
                     </div>
-                    <button id="processBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-xl transition-all shadow-lg hover:shadow-blue-200 flex items-center gap-2">
+                    <button id="processBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-xl transition-all shadow-lg flex items-center gap-2">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                        白塗り加工を適用して保存
+                        全ファイル一括処理
                     </button>
                 </div>
-                <p class="text-[11px] text-slate-400 mt-4 italic">※ 選択した範囲はすべてのページで白塗りされます。</p>
             </div>
 
             <!-- Status Indicator -->
@@ -147,6 +138,8 @@
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const editorArea = document.getElementById('editorArea');
+        const fileListNames = document.getElementById('fileListNames');
+        const fileCountDisplay = document.getElementById('fileCountDisplay');
         const pdfCanvas = document.getElementById('pdfCanvas');
         const maskSelection = document.getElementById('maskSelection');
         const previewContainer = document.getElementById('previewContainer');
@@ -154,93 +147,118 @@
         const resetBtn = document.getElementById('resetSelection');
         const changeFileBtn = document.getElementById('changeFile');
         const status = document.getElementById('status');
-        
         const previewPageInput = document.getElementById('previewPageInput');
-        const previewPageSlider = document.getElementById('previewPageSlider');
         const totalPagesText = document.getElementById('totalPagesText');
         const prevPageBtn = document.getElementById('prevPageBtn');
         const nextPageBtn = document.getElementById('nextPageBtn');
+        const currentPreviewFileInfo = document.getElementById('currentPreviewFileInfo');
 
-        let selectedFile = { name: '', data: null };
-        let pdfData = null;
+        let fileQueue = [];
         let pdfDocForPreview = null;
+        let currentPreviewPageIndex = 0;
         let currentPreviewPage = 1;
-
-        // Interaction State
         let mode = 'idle';
         let currentHandle = null;
         let startX, startY;
         let initialRect = null;
         let selectionRect = null;
+        let wheelAccumulator = 0;
+        let currentRenderTask = null;
 
         function showStatus(text, type = 'info') {
-            if (!status) return;
             status.textContent = text;
-            status.classList.remove('hidden', 'bg-red-50', 'text-red-600', 'bg-blue-50', 'text-blue-600', 'bg-green-50', 'text-green-600');
-            
-            if (type === 'error') {
-                status.classList.add('bg-red-50', 'text-red-600');
-            } else if (type === 'success') {
-                status.classList.add('bg-green-50', 'text-green-600');
-            } else {
-                status.classList.add('bg-blue-50', 'text-blue-600');
-            }
-        }
-
-        function resetToInitial() {
-            editorArea.classList.add('hidden');
-            dropZone.classList.remove('hidden');
-            status.classList.add('hidden');
-            fileInput.value = '';
-            selectedFile = { name: '', data: null };
-            pdfData = null;
-            pdfDocForPreview = null;
-            selectionRect = null;
-            maskSelection.style.display = 'none';
+            status.className = `mt-6 text-center text-sm font-medium py-2 px-4 rounded-full bg-slate-50 ${type === 'error' ? 'text-red-600 bg-red-50' : type === 'success' ? 'text-green-600 bg-green-50' : 'text-blue-600 bg-blue-50'}`;
+            status.classList.remove('hidden');
         }
 
         dropZone.onclick = () => fileInput.click();
-        changeFileBtn.onclick = resetToInitial;
+        
+        // リセットして戻る
+        changeFileBtn.onclick = () => {
+            fileQueue = [];
+            selectionRect = null;
+            maskSelection.style.display = 'none';
+            editorArea.classList.add('hidden');
+            dropZone.classList.remove('hidden');
+            status.classList.add('hidden');
+            fileInput.value = "";
+        };
 
         dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('dragging'); };
         dropZone.ondragleave = () => { dropZone.classList.remove('dragging'); };
         dropZone.ondrop = (e) => {
             e.preventDefault();
             dropZone.classList.remove('dragging');
-            if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+            handleFiles(e.dataTransfer.files);
         };
-        fileInput.onchange = (e) => { if (e.target.files.length > 0) handleFile(e.target.files[0]); };
+        fileInput.onchange = (e) => { handleFiles(e.target.files); };
 
-        async function handleFile(file) {
-            if (file.type !== 'application/pdf') {
-                showStatus('エラー: PDFファイルを選択してください', 'error');
+        async function handleFiles(files) {
+            // 新しいファイルが来たらキューを完全に空にする
+            fileQueue = [];
+            const pdfFiles = Array.from(files).filter(f => f.type === 'application/pdf');
+            
+            if (pdfFiles.length === 0) {
+                showStatus('PDFファイルが見つかりません', 'error');
                 return;
             }
-            const arrayBuffer = await file.arrayBuffer();
-            handleFileLoaded(file.name, arrayBuffer);
+
+            for (let i = 0; i < pdfFiles.length; i++) {
+                const file = pdfFiles[i];
+                const arrayBuffer = await file.arrayBuffer();
+                fileQueue.push({ id: Date.now() + i, name: file.name, data: arrayBuffer });
+            }
+
+            fileCountDisplay.textContent = `${fileQueue.length} ファイル`;
+            updateFileListUI();
+            
+            // ページ番号などの状態をリセット
+            currentPreviewPage = 1;
+            await selectPreviewFile(0);
         }
 
-        async function handleFileLoaded(fileName, arrayBuffer) {
-            selectedFile.name = fileName;
-            pdfData = arrayBuffer;
+        function updateFileListUI() {
+            fileListNames.innerHTML = fileQueue.map((f, idx) => `
+                <div class="file-item truncate border-l-2 pl-2 py-1 px-2 cursor-pointer hover:bg-slate-100 rounded ${idx === currentPreviewPageIndex ? 'active font-bold border-blue-600' : 'border-slate-300'}" 
+                     onclick="selectPreviewFile(${idx})" 
+                     title="${f.name}">
+                    ${f.name}
+                </div>
+            `).join('');
+        }
+
+        async function selectPreviewFile(index) {
+            if (index < 0 || index >= fileQueue.length) return;
+            
+            currentPreviewPageIndex = index;
+            const file = fileQueue[index];
+            currentPreviewFileInfo.textContent = `プレビュー中: ${file.name}`;
+            
+            updateFileListUI();
+
             try {
-                const loadingTask = pdfjsLib.getDocument({ data: pdfData.slice(0) });
+                const loadingTask = pdfjsLib.getDocument({ data: file.data.slice(0) });
                 pdfDocForPreview = await loadingTask.promise;
                 
                 totalPagesText.textContent = pdfDocForPreview.numPages;
                 previewPageInput.max = pdfDocForPreview.numPages;
-                previewPageSlider.max = pdfDocForPreview.numPages;
-                currentPreviewPage = 1;
+                
+                if (currentPreviewPage > pdfDocForPreview.numPages) {
+                    currentPreviewPage = 1;
+                }
                 
                 updatePageUI();
-                renderPreview(currentPreviewPage);
+                await renderPreview(currentPreviewPage);
             } catch (err) {
-                showStatus('PDFの読み込みに失敗しました', 'error');
+                showStatus('プレビュー生成エラー: ' + err.message, 'error');
             }
         }
 
         async function renderPreview(pageNumber) {
-            showStatus('レンダリング中...', 'info');
+            if (currentRenderTask) {
+                await currentRenderTask.cancel();
+            }
+
             try {
                 const page = await pdfDocForPreview.getPage(pageNumber);
                 const viewport = page.getViewport({ scale: 1.0 });
@@ -250,23 +268,38 @@
                 
                 pdfCanvas.width = scaledViewport.width;
                 pdfCanvas.height = scaledViewport.height;
-                const renderContext = { 
-                    canvasContext: pdfCanvas.getContext('2d'), 
-                    viewport: scaledViewport 
-                };
-                await page.render(renderContext).promise;
-
-                editorArea.classList.remove('hidden');
-                dropZone.classList.add('hidden');
-                showStatus('白塗りしたい範囲をドラッグで指定してください');
-                if (selectionRect) updateSelectionUI();
+                const renderContext = { canvasContext: pdfCanvas.getContext('2d'), viewport: scaledViewport };
+                
+                currentRenderTask = page.render(renderContext);
+                await currentRenderTask.promise;
             } catch (err) {
-                showStatus('プレビュー生成エラー', 'error');
+                if (err.name !== 'RenderingCancelledException') {
+                    console.error('Render error:', err);
+                }
+                return;
+            } finally {
+                currentRenderTask = null;
             }
+
+            editorArea.classList.remove('hidden');
+            dropZone.classList.add('hidden');
+            showStatus('範囲を指定してください。全ファイルに適用されます。');
+            if (selectionRect) updateSelectionUI();
         }
 
+        previewContainer.addEventListener('wheel', (e) => {
+            if (!pdfDocForPreview || mode !== 'idle') return;
+            e.preventDefault();
+            
+            wheelAccumulator += e.deltaY;
+            if (Math.abs(wheelAccumulator) >= 100) {
+                const delta = wheelAccumulator > 0 ? 1 : -1;
+                changePage(delta);
+                wheelAccumulator = 0;
+            }
+        }, { passive: false });
+
         function changePage(delta) {
-            if (!pdfDocForPreview) return;
             let next = currentPreviewPage + delta;
             if (next >= 1 && next <= pdfDocForPreview.numPages) {
                 currentPreviewPage = next;
@@ -275,22 +308,7 @@
             }
         }
 
-        prevPageBtn.onclick = () => changePage(-1);
-        nextPageBtn.onclick = () => changePage(1);
-
-        previewContainer.addEventListener('wheel', (e) => {
-            if (!pdfDocForPreview || mode !== 'idle') return;
-            e.preventDefault();
-            changePage(e.deltaY > 0 ? 1 : -1);
-        }, { passive: false });
-
-        function updatePageUI() {
-            previewPageInput.value = currentPreviewPage;
-            previewPageSlider.value = currentPreviewPage;
-        }
-
-        // --- Mouse Interaction ---
-
+        // --- Interaction Logic (Selection) ---
         previewContainer.onmousedown = (e) => {
             const rect = previewContainer.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
@@ -299,23 +317,18 @@
             if (e.target.classList.contains('handle')) {
                 mode = 'resizing';
                 currentHandle = e.target.dataset.handle;
-                startX = e.clientX;
-                startY = e.clientY;
+                startX = e.clientX; startY = e.clientY;
                 initialRect = { ...selectionRect };
                 return;
             }
-
             if (e.target === maskSelection) {
                 mode = 'moving';
-                startX = e.clientX;
-                startY = e.clientY;
+                startX = e.clientX; startY = e.clientY;
                 initialRect = { ...selectionRect };
                 return;
             }
-
             mode = 'drawing';
-            startX = mouseX;
-            startY = mouseY;
+            startX = mouseX; startY = mouseY;
             maskSelection.style.display = 'block';
             updateSelectionElement(startX, startY, 0, 0);
         };
@@ -327,36 +340,23 @@
             if (mode === 'drawing') {
                 const currentX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
                 const currentY = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
-                const x = Math.min(startX, currentX);
-                const y = Math.min(startY, currentY);
-                const w = Math.abs(currentX - startX);
-                const h = Math.abs(currentY - startY);
+                const x = Math.min(startX, currentX), y = Math.min(startY, currentY);
+                const w = Math.abs(currentX - startX), h = Math.abs(currentY - startY);
                 updateSelectionElement(x, y, w, h);
-            } 
-            else if (mode === 'moving') {
-                const dx = (e.clientX - startX) / rect.width;
-                const dy = (e.clientY - startY) / rect.height;
+            } else if (mode === 'moving') {
+                const dx = (e.clientX - startX) / rect.width, dy = (e.clientY - startY) / rect.height;
                 selectionRect.x = Math.max(0, Math.min(initialRect.x + dx, 1 - selectionRect.width));
                 selectionRect.y = Math.max(0, Math.min(initialRect.y + dy, 1 - selectionRect.height));
                 updateSelectionUI();
-            } 
-            else if (mode === 'resizing') {
-                const dx = (e.clientX - startX) / rect.width;
-                const dy = (e.clientY - startY) / rect.height;
+            } else if (mode === 'resizing') {
+                const dx = (e.clientX - startX) / rect.width, dy = (e.clientY - startY) / rect.height;
                 let { x, y, width, height } = initialRect;
-
                 if (currentHandle.includes('n')) { y += dy; height -= dy; }
                 if (currentHandle.includes('s')) { height += dy; }
                 if (currentHandle.includes('w')) { x += dx; width -= dx; }
                 if (currentHandle.includes('e')) { width += dx; }
-
                 if (width > 0.005 && height > 0.005) {
-                    selectionRect = { 
-                        x: Math.max(0, x), 
-                        y: Math.max(0, y), 
-                        width: Math.min(width, 1 - x), 
-                        height: Math.min(height, 1 - y) 
-                    };
+                    selectionRect = { x: Math.max(0, x), y: Math.max(0, y), width: Math.min(width, 1 - x), height: Math.min(height, 1 - y) };
                     updateSelectionUI();
                 }
             }
@@ -365,97 +365,71 @@
         window.onmouseup = () => {
             if (mode === 'drawing') {
                 const rect = previewContainer.getBoundingClientRect();
-                const left = parseFloat(maskSelection.style.left);
-                const top = parseFloat(maskSelection.style.top);
-                const width = parseFloat(maskSelection.style.width);
-                const height = parseFloat(maskSelection.style.height);
-
-                if (width < 5 || height < 5) {
-                    maskSelection.style.display = 'none';
-                    selectionRect = null;
-                } else {
-                    selectionRect = {
-                        x: left / rect.width,
-                        y: top / rect.height,
-                        width: width / rect.width,
-                        height: height / rect.height
-                    };
-                }
+                const left = parseFloat(maskSelection.style.left), top = parseFloat(maskSelection.style.top);
+                const width = parseFloat(maskSelection.style.width), height = parseFloat(maskSelection.style.height);
+                if (width < 5 || height < 5) { maskSelection.style.display = 'none'; selectionRect = null; }
+                else { selectionRect = { x: left / rect.width, y: top / rect.height, width: width / rect.width, height: height / rect.height }; }
             }
             mode = 'idle';
         };
 
         function updateSelectionElement(x, y, w, h) {
-            maskSelection.style.left = `${x}px`;
-            maskSelection.style.top = `${y}px`;
-            maskSelection.style.width = `${w}px`;
-            maskSelection.style.height = `${h}px`;
+            maskSelection.style.left = `${x}px`; maskSelection.style.top = `${y}px`;
+            maskSelection.style.width = `${w}px`; maskSelection.style.height = `${h}px`;
         }
 
         function updateSelectionUI() {
             if (!selectionRect) return;
-            const cw = pdfCanvas.width;
-            const ch = pdfCanvas.height;
-            updateSelectionElement(
-                selectionRect.x * cw, 
-                selectionRect.y * ch, 
-                selectionRect.width * cw, 
-                selectionRect.height * ch
-            );
+            const cw = pdfCanvas.width, ch = pdfCanvas.height;
+            updateSelectionElement(selectionRect.x * cw, selectionRect.y * ch, selectionRect.width * cw, selectionRect.height * ch);
         }
 
-        resetBtn.onclick = () => {
-            selectionRect = null;
-            maskSelection.style.display = 'none';
-        };
+        resetBtn.onclick = () => { selectionRect = null; maskSelection.style.display = 'none'; };
 
-        // --- Processing (Still 100% Local) ---
-
+        // --- Batch Processing ---
         processBtn.onclick = async () => {
-            if (!selectionRect) {
-                showStatus('白塗りする範囲を選択してください', 'error');
-                return;
-            }
-
+            if (!selectionRect) { showStatus('範囲を指定してください', 'error'); return; }
+            if (fileQueue.length === 0) { showStatus('処理するファイルがありません', 'error'); return; }
+            
+            processBtn.disabled = true;
+            const originalBtnText = processBtn.innerHTML;
+            
             try {
-                processBtn.disabled = true;
-                processBtn.innerHTML = '処理中...';
-                showStatus('ローカルでPDFを生成しています...', 'info');
+                // 処理対象をコピー（処理中にキューが変更されないように固定）
+                const targets = [...fileQueue];
+                
+                for (let i = 0; i < targets.length; i++) {
+                    const file = targets[i];
+                    showStatus(`${i + 1}/${targets.length} ファイル目を処理中: ${file.name}`);
+                    processBtn.innerHTML = `処理中 (${i + 1}/${targets.length})`;
 
-                // Load existing PDF locally
-                const pdfDoc = await PDFDocument.load(pdfData.slice(0));
-                const pages = pdfDoc.getPages();
+                    const pdfDoc = await PDFDocument.load(file.data.slice(0));
+                    const pages = pdfDoc.getPages();
 
-                // Apply mask to all pages
-                pages.forEach((page) => {
-                    const { width, height } = page.getSize();
-                    const rectWidth = width * selectionRect.width;
-                    const rectHeight = height * selectionRect.height;
-                    const rectX = width * selectionRect.x;
-                    const rectY = height * (1 - selectionRect.y - selectionRect.height);
-
-                    page.drawRectangle({
-                        x: rectX,
-                        y: rectY,
-                        width: rectWidth,
-                        height: rectHeight,
-                        color: rgb(1, 1, 1), // White
+                    pages.forEach((page) => {
+                        const { width, height } = page.getSize();
+                        page.drawRectangle({
+                            x: width * selectionRect.x,
+                            y: height * (1 - selectionRect.y - selectionRect.height),
+                            width: width * selectionRect.width,
+                            height: height * selectionRect.height,
+                            color: rgb(1, 1, 1),
+                        });
                     });
-                });
 
-                const pdfBytes = await pdfDoc.save();
-                
-                // 元のファイル名から拡張子を除き、指定された接尾辞を追加
-                const baseName = selectedFile.name.replace(/\.pdf$/i, '');
-                const fileNameToSave = `${baseName}（アップロード用）.pdf`;
-                
-                download(pdfBytes, fileNameToSave);
-                showStatus('完了しました。ダウンロードを確認してください。', 'success');
+                    const pdfBytes = await pdfDoc.save();
+                    const fileNameToSave = file.name.replace(/\.pdf$/i, '') + '（アップロード用）.pdf';
+                    download(pdfBytes, fileNameToSave);
+                    
+                    // ブラウザの同時ダウンロード制限やUIのフリーズを避けるため少し待機
+                    if (targets.length > 1) await new Promise(r => setTimeout(r, 600));
+                }
+                showStatus(`${targets.length} 件のファイルを一括処理しました`, 'success');
             } catch (err) {
                 showStatus('処理エラー: ' + err.message, 'error');
             } finally {
                 processBtn.disabled = false;
-                processBtn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg><span>白塗り加工を適用して保存</span>';
+                processBtn.innerHTML = originalBtnText;
             }
         };
 
@@ -468,20 +442,16 @@
             URL.revokeObjectURL(link.href);
         }
 
-        // Page inputs
+        prevPageBtn.onclick = () => changePage(-1);
+        nextPageBtn.onclick = () => changePage(1);
+        function updatePageUI() { previewPageInput.value = currentPreviewPage; }
         previewPageInput.onchange = () => {
             let val = parseInt(previewPageInput.value);
-            if (isNaN(val) || val < 1) val = 1;
-            if (pdfDocForPreview && val > pdfDocForPreview.numPages) val = pdfDocForPreview.numPages;
-            currentPreviewPage = val;
-            updatePageUI();
-            renderPreview(currentPreviewPage);
+            if (val >= 1 && val <= pdfDocForPreview.numPages) { currentPreviewPage = val; renderPreview(currentPreviewPage); }
+            else { updatePageUI(); }
         };
-        previewPageSlider.oninput = () => {
-            currentPreviewPage = parseInt(previewPageSlider.value);
-            previewPageInput.value = currentPreviewPage;
-        };
-        previewPageSlider.onchange = () => renderPreview(currentPreviewPage);
+
+        window.selectPreviewFile = selectPreviewFile;
     </script>
 </body>
 </html>
